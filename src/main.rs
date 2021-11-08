@@ -364,9 +364,9 @@ fn main() -> Result<()> {
 r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
     --binary      - Don't output a FELF, output the raw loaded image with no
                     metadata
-    --base <addr> - Force the output to start at <addr>, zero padding from the
-                    base to the start of the first LOAD segment if needed.
-                    <addr> is default hex, can be overrided with `0d`, `0b`,
+    --base=<addr> - Force the output to start at `<addr>`, zero padding from
+                    the base to the start of the first LOAD segment if needed.
+                    `<addr>` is default hex, can be overrided with `0d`, `0b`,
                     `0x`, or `0o` prefixes.
                     Warning: This does not _relocate_ to base, it simply starts
                     the output at `<addr>` (adding zero bytes such that the
