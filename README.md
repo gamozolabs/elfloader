@@ -37,6 +37,35 @@ To install this tool run:
 
 Now you can use `elfloader` from anywhere in your shell!
 
+# Example
+
+There's an example in `example_small_program`, simply run `make` or `nmake`
+and this should generate an `example.bin` which is 8 bytes.
+
+```
+pleb@gamey ~/elfloader/example_small_program $ make
+cargo build --release
+    Finished release [optimized] target(s) in 0.03s
+elfloader --binary target/aarch64-unknown-none/release/example_small_program example.bin
+pleb@gamey ~/elfloader/example_small_program $ ls -l ./example.bin 
+-rw-r--r-- 1 pleb pleb 8 Nov  8 12:27 ./example.bin
+
+pleb@gamey ~/elfloader/example_small_program $ objdump -d target/aarch64-unknown-none/release/example_small_program
+
+target/aarch64-unknown-none/release/example_small_program:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+00000000133700b0 <_start>:
+    133700b0:   8b000020        add     x0, x1, x0
+    133700b4:   d65f03c0        ret
+```
+
+Now you can write your shellcode in Rust, and you don't have to worry about
+whether you emit `.data`, `.rodata`, `.bss`, etc. This will handle it all for
+you!
+
 # Iternals
 
 This tool doesn't care about anything except for `LOAD` sections. It determines
