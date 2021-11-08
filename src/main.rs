@@ -65,6 +65,9 @@ pub enum Error {
 
     /// The ELF didn't supply any segments to load
     NoLoadSegments,
+
+    /// The `--base` provided did not parse into a `u64` correctly
+    InvalidBase(std::num::ParseIntError),
 }
 
 /// Consume bytes from a reader
@@ -172,7 +175,8 @@ const PT_LOAD: u32 = 1;
 /// Returns:
 ///
 /// `(entry virtual address, base address for flat map, flat map contents)`
-pub fn load_file(path: impl AsRef<Path>) -> Result<(u64, u64, Vec<u8>)> {
+pub fn load_file(path: impl AsRef<Path>, base: Option<u64>)
+        -> Result<(u64, u64, Vec<u8>)> {
     // Open the file
     let mut reader =
         BufReader::new(File::open(path).map_err(Error::Open)?);
@@ -284,8 +288,11 @@ pub fn load_file(path: impl AsRef<Path>) -> Result<(u64, u64, Vec<u8>)> {
     // Flat in-memory loaded representation
     let mut loaded = Vec::new();
 
+    // Start load at the specified `base`, otherwise use the lowest address of
+    // all the LOAD sections
+    let mut cur_addr = base.unwrap_or(lowest_addr);
+
     // Load everything!
-    let mut cur_addr = lowest_addr;
     for (vaddr, bytes) in load {
         // Get the offset from where we are
         let offset: usize = vaddr.checked_sub(cur_addr)
@@ -308,22 +315,80 @@ pub fn load_file(path: impl AsRef<Path>) -> Result<(u64, u64, Vec<u8>)> {
     Ok((entry, lowest_addr, loaded))
 }
 
+/// Entry point
 fn main() -> Result<()> {
-    let args = std::env::args().collect::<Vec<_>>();
+    // Get the command line arguments
+    let mut args = std::env::args().collect::<Vec<_>>();
+
+    // Check if the `--binary` flag was specified
+    let mut binary = false;
+    args.retain(|x| if x == "--binary" { binary = true; false } else { true });
+
+    // Check if the `--base=` flag was specified
+    let mut base = None;
+    args.retain(|x| {
+        if x.starts_with("--base=") {
+            // Default to hex, skip oevr `--base=`
+            let mut radix = 16;
+            let mut x     = &x[7..];
+
+            if x.starts_with("0x") {
+                radix = 16;
+                x = &x[2..];
+            } else if x.starts_with("0o") {
+                radix = 8;
+                x = &x[2..];
+            } else if x.starts_with("0b") {
+                radix = 2;
+                x = &x[2..];
+            } else if x.starts_with("0d") {
+                radix = 10;
+                x = &x[2..];
+            }
+
+            // Convert to a `u64`
+            base = Some(u64::from_str_radix(x, radix)
+                .map_err(Error::InvalidBase));
+
+            // Don't keep this argument
+            false
+        } else { true }
+    });
+
+    // Can't use `?` in closure
+    let base = if let Some(base) = base {
+        Some(base?)
+    } else { None };
+
     if args.len() != 3 {
-        println!("Invalid usage: elfloader <input ELF> <output FELF>");
+        println!(
+r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
+    --binary      - Don't output a FELF, output the raw loaded image with no
+                    metadata
+    --base <addr> - Force the output to start at <addr>, zero padding from the
+                    base to the start of the first LOAD segment if needed.
+                    <addr> is default hex, can be overrided with `0d`, `0b`,
+                    `0x`, or `0o` prefixes.
+    <input ELF>   - Path to input ELF
+    <output>      - Path to output file"#);
         return Ok(());
     }
 
     // Load the ELF
-    let (entry, addr, payload) = load_file(&args[1])?;
+    let (entry, addr, payload) = load_file(&args[1], base)?;
 
     // Create the output file
     let mut output = BufWriter::new(File::create(&args[2])
         .map_err(Error::CreateFelf)?);
-    output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
-    output.write_all(&entry.to_le_bytes()).map_err(Error::WriteFelf)?;
-    output.write_all(&addr.to_le_bytes()).map_err(Error::WriteFelf)?;
+
+    if !binary {
+        // Write the FELF header
+        output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
+        output.write_all(&entry.to_le_bytes()).map_err(Error::WriteFelf)?;
+        output.write_all(&addr.to_le_bytes()).map_err(Error::WriteFelf)?;
+    }
+    
+    // Write the payload
     output.write_all(&payload).map_err(Error::WriteFelf)?;
     output.flush().map_err(Error::WriteFelf)?;
 

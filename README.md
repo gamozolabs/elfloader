@@ -19,7 +19,23 @@ is based at the address you want it to be at.
 
 To use this tool, simply:
 
-`cargo run <input elf> <output FELF>`
+```
+Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
+    --binary      - Don't output a FELF, output the raw loaded image with no
+                    metadata
+    --base <addr> - Force the output to start at <addr>, zero padding from the
+                    base to the start of the first LOAD segment if needed.
+                    <addr> is default hex, can be overrided with `0d`, `0b`,
+                    `0x`, or `0o` prefixes.
+    <input ELF>   - Path to input ELF
+    <output>      - Path to output file
+```
+
+To install this tool run:
+
+`cargo install --path .`
+
+Now you can use `elfloader` from anywhere in your shell!
 
 # Iternals
 
