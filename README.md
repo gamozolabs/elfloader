@@ -27,6 +27,10 @@ Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
                     base to the start of the first LOAD segment if needed.
                     <addr> is default hex, can be overrided with `0d`, `0b`,
                     `0x`, or `0o` prefixes.
+                    Warning: This does not _relocate_ to base, it simply starts
+                    the output at `<addr>` (adding zero bytes such that the
+                    output image can be loaded at `<addr>` instead of the
+                    original ELF base)
     <input ELF>   - Path to input ELF
     <output>      - Path to output file
 ```

@@ -282,17 +282,16 @@ pub fn load_file(path: impl AsRef<Path>, base: Option<u64>)
     // Sort load sections by virtual address
     load.sort_by_key(|x| x.0);
 
-    // Get the lowest address loaded 
-    let lowest_addr = load.get(0).ok_or(Error::NoLoadSegments)?.0;
+    // Start load at the specified `base`, otherwise use the lowest address of
+    // all the LOAD sections
+    let lowest_addr = base.unwrap_or(
+        load.get(0).ok_or(Error::NoLoadSegments)?.0);
 
     // Flat in-memory loaded representation
     let mut loaded = Vec::new();
 
-    // Start load at the specified `base`, otherwise use the lowest address of
-    // all the LOAD sections
-    let mut cur_addr = base.unwrap_or(lowest_addr);
-
     // Load everything!
+    let mut cur_addr = lowest_addr;
     for (vaddr, bytes) in load {
         // Get the offset from where we are
         let offset: usize = vaddr.checked_sub(cur_addr)
@@ -369,6 +368,10 @@ r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
                     base to the start of the first LOAD segment if needed.
                     <addr> is default hex, can be overrided with `0d`, `0b`,
                     `0x`, or `0o` prefixes.
+                    Warning: This does not _relocate_ to base, it simply starts
+                    the output at `<addr>` (adding zero bytes such that the
+                    output image can be loaded at `<addr>` instead of the
+                    original ELF base)
     <input ELF>   - Path to input ELF
     <output>      - Path to output file"#);
         return Ok(());
