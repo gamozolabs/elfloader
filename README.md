@@ -3,6 +3,12 @@
 `elfloader` is a super simple loader for ELF files that generates a flat
 in-memory representation of the ELF.
 
+Pair this with Rust and now you can write your shellcode in a proper, safe,
+high-level language. Any target that LLVM can target can be used, including
+custom target specifications for really exotic platforms and ABIs. Enjoy using
+things like `u64`s on 32-bit systems, bounds checked arrays, drop handling of
+allocations, etc :)
+
 It simply concatenates all `LOAD` sections together, using zero-padding if
 there are gaps, into one big flat file.
 
