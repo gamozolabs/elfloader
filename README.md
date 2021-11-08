@@ -70,6 +70,55 @@ Now you can write your shellcode in Rust, and you don't have to worry about
 whether you emit `.data`, `.rodata`, `.bss`, etc. This will handle it all for
 you!
 
+There's also an example with `.bss` and `.rodata`
+
+```
+pleb@gamey ~/elfloader/example_program_with_data $ make
+cargo build --release
+    Finished release [optimized] target(s) in 0.04s
+elfloader --binary target/aarch64-unknown-none/release/example_program_with_data example.bin
+pleb@gamey ~/elfloader/example_program_with_data $ ls -l ./example.bin
+-rw-r--r-- 1 pleb pleb 29 Nov  8 12:39 ./example.bin
+pleb@gamey ~/elfloader/example_program_with_data $ objdump -d target/aarch64-unknown-none/release/example_program_with_data
+
+target/aarch64-unknown-none/release/example_program_with_data:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000013370124 <_start>:
+    13370124:   90000000        adrp    x0, 13370000 <_start-0x124>
+    13370128:   90000008        adrp    x8, 13370000 <_start-0x124>
+    1337012c:   52800029        mov     w9, #0x1                        // #1
+    13370130:   91048000        add     x0, x0, #0x120
+    13370134:   3904f109        strb    w9, [x8, #316]
+    13370138:   d65f03c0        ret
+pleb@gamey ~/elfloader/example_program_with_data $ readelf -l target/aarch64-unknown-none/release/example_program_with_data
+
+Elf file type is EXEC (Executable file)
+Entry point 0x13370124
+There are 4 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flags  Align
+  LOAD           0x0000000000000120 0x0000000013370120 0x0000000013370120
+                 0x0000000000000004 0x0000000000000004  R      0x1
+  LOAD           0x0000000000000124 0x0000000013370124 0x0000000013370124
+                 0x0000000000000018 0x0000000000000018  R E    0x4
+  LOAD           0x000000000000013c 0x000000001337013c 0x000000001337013c
+                 0x0000000000000000 0x0000000000000001  RW     0x4
+  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000000 0x0000000000000000  RW     0x0
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .rodata 
+   01     .text 
+   02     .bss 
+   03     
+```
+
 # Iternals
 
 This tool doesn't care about anything except for `LOAD` sections. It determines

@@ -1,0 +1,9 @@
+[build]
+target = "aarch64-unknown-none"
+
+[target.aarch64-unknown-none]
+rustflags = ["-Clink-arg=--nmagic", "-Clink-arg=--image-base=0x13370000"]
+
+[unstable]
+build-std = ["core"]
+
