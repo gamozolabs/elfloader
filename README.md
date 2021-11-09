@@ -47,6 +47,12 @@ To install this tool run:
 
 Now you can use `elfloader` from anywhere in your shell!
 
+# Dev
+
+This project was developed live here:
+
+https://www.youtube.com/watch?v=x0V-CEmXQCQ
+
 # Example
 
 There's an example in `example_small_program`, simply run `make` or `nmake`
