@@ -131,7 +131,7 @@ Program Headers:
    03     
 ```
 
-# Iternals
+# Internals
 
 This tool doesn't care about anything except for `LOAD` sections. It determines
 the endianness (little vs big) and bitness (32 vs 64) from the ELF header,

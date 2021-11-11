@@ -175,8 +175,12 @@ const PT_LOAD: u32 = 1;
 /// Returns:
 ///
 /// `(entry virtual address, base address for flat map, flat map contents)`
-pub fn load_file(path: impl AsRef<Path>, base: Option<u64>)
-        -> Result<(u64, u64, Vec<u8>)> {
+pub fn write_file<W: std::io::Write>(
+        path: impl AsRef<Path>, 
+        base: Option<u64>,
+        mut output: W,
+        binary: bool,
+        ) -> Result<()> {
     // Open the file
     let mut reader =
         BufReader::new(File::open(path).map_err(Error::Open)?);
@@ -287,31 +291,59 @@ pub fn load_file(path: impl AsRef<Path>, base: Option<u64>)
     let lowest_addr = base.unwrap_or(
         load.get(0).ok_or(Error::NoLoadSegments)?.0);
 
-    // Flat in-memory loaded representation
-    let mut loaded = Vec::new();
+    if !binary {
+        // Write the FELF header
+        output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
+        output
+            .write_all(&entry.to_le_bytes())
+            .map_err(Error::WriteFelf)?;
+        output
+            .write_all(&lowest_addr.to_le_bytes())
+            .map_err(Error::WriteFelf)?;
+    }
 
-    // Load everything!
+    // Write everything!
     let mut cur_addr = lowest_addr;
+    let mut written = 0usize;
     for (vaddr, bytes) in load {
         // Get the offset from where we are
         let offset: usize = vaddr.checked_sub(cur_addr)
             .ok_or(Error::SectionOverlap)?
             .try_into()
             .map_err(|_| Error::IntegerTruncationOffset)?;
-
         // Pad out loaded representation until `vaddr`
-        loaded.resize(loaded.len().checked_add(offset)
-            .ok_or(Error::IntegerOverflowLoaded)?, 0u8);
+        //loaded.resize(loaded.len().checked_add(offset)
+        //  .ok_or(Error::IntegerOverflowLoaded)?, 0u8);
+        const ZERO_BUF: [u8; 1024 * 8] = [0u8; 1024 * 8];
+
+        let mut padding = offset;
+        while padding > ZERO_BUF.len() {
+            output.write_all(&ZERO_BUF).map_err(Error::WriteFelf)?;
+            padding -= ZERO_BUF.len();
+        }
+        output
+            .write_all(&ZERO_BUF[..padding])
+            .map_err(Error::WriteFelf)?;
+        written = written
+            .checked_add(offset)
+            .ok_or(Error::IntegerOverflowLoaded)?;
 
         // Place in the bytes
-        loaded.extend_from_slice(&bytes);
+        //loaded.extend_from_slice(&bytes);
+        output.write_all(&bytes).map_err(Error::WriteFelf)?;
+        written = written
+            .checked_add(bytes.len())
+            .ok_or(Error::IntegerOverflowLoaded)?;
 
         // Update current address
-        cur_addr = vaddr.checked_add(bytes.len() as u64)
+        cur_addr = vaddr
+            .checked_add(bytes.len() as u64)
             .ok_or(Error::IntegerOverflowCurrentAddress)?;
     }
 
-    Ok((entry, lowest_addr, loaded))
+    output.flush().map_err(Error::WriteFelf)?;
+
+    Ok(())
 }
 
 /// Entry point
@@ -377,23 +409,10 @@ r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
         return Ok(());
     }
 
-    // Load the ELF
-    let (entry, addr, payload) = load_file(&args[1], base)?;
-
     // Create the output file
-    let mut output = BufWriter::new(File::create(&args[2])
-        .map_err(Error::CreateFelf)?);
+    let mut output = BufWriter::new(File::create(&args[2]).map_err(Error::CreateFelf)?);
 
-    if !binary {
-        // Write the FELF header
-        output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
-        output.write_all(&entry.to_le_bytes()).map_err(Error::WriteFelf)?;
-        output.write_all(&addr.to_le_bytes()).map_err(Error::WriteFelf)?;
-    }
-    
-    // Write the payload
-    output.write_all(&payload).map_err(Error::WriteFelf)?;
-    output.flush().map_err(Error::WriteFelf)?;
+    write_file(&args[1], base, &mut output, binary)?;
 
     Ok(())
 }
