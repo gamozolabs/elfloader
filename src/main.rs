@@ -394,8 +394,8 @@ r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
     }
 
     // Create the output file
-    let mut output = BufWriter::new(File::create(&args[2]).map_err(Error::CreateFelf)?);
-
+    let mut output = BufWriter::new(File::create(&args[2])
+        .map_err(Error::CreateFelf)?);
     write_file(&args[1], base, &mut output, binary)?;
 
     Ok(())
