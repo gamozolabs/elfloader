@@ -53,9 +53,6 @@ pub enum Error {
 
     /// Trucated integer for offset
     IntegerTruncationOffset,
-
-    /// Integer overflow when computing loaded size
-    IntegerOverflowLoaded,
     
     /// Integer overflow when computing current address
     IntegerOverflowCurrentAddress,
@@ -175,12 +172,8 @@ const PT_LOAD: u32 = 1;
 /// Returns:
 ///
 /// `(entry virtual address, base address for flat map, flat map contents)`
-pub fn write_file<W: std::io::Write>(
-        path: impl AsRef<Path>, 
-        base: Option<u64>,
-        mut output: W,
-        binary: bool,
-        ) -> Result<()> {
+pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
+        mut output: impl Write, binary: bool) -> Result<()> {
     // Open the file
     let mut reader =
         BufReader::new(File::open(path).map_err(Error::Open)?);
@@ -304,16 +297,14 @@ pub fn write_file<W: std::io::Write>(
 
     // Write everything!
     let mut cur_addr = lowest_addr;
-    let mut written = 0usize;
     for (vaddr, bytes) in load {
         // Get the offset from where we are
         let offset: usize = vaddr.checked_sub(cur_addr)
             .ok_or(Error::SectionOverlap)?
             .try_into()
             .map_err(|_| Error::IntegerTruncationOffset)?;
+
         // Pad out loaded representation until `vaddr`
-        //loaded.resize(loaded.len().checked_add(offset)
-        //  .ok_or(Error::IntegerOverflowLoaded)?, 0u8);
         const ZERO_BUF: [u8; 1024 * 8] = [0u8; 1024 * 8];
 
         let mut padding = offset;
@@ -324,16 +315,9 @@ pub fn write_file<W: std::io::Write>(
         output
             .write_all(&ZERO_BUF[..padding])
             .map_err(Error::WriteFelf)?;
-        written = written
-            .checked_add(offset)
-            .ok_or(Error::IntegerOverflowLoaded)?;
 
         // Place in the bytes
-        //loaded.extend_from_slice(&bytes);
         output.write_all(&bytes).map_err(Error::WriteFelf)?;
-        written = written
-            .checked_add(bytes.len())
-            .ok_or(Error::IntegerOverflowLoaded)?;
 
         // Update current address
         cur_addr = vaddr
@@ -359,7 +343,7 @@ fn main() -> Result<()> {
     let mut base = None;
     args.retain(|x| {
         if x.starts_with("--base=") {
-            // Default to hex, skip oevr `--base=`
+            // Default to hex, skip over `--base=`
             let mut radix = 16;
             let mut x     = &x[7..];
 
