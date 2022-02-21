@@ -20,7 +20,7 @@ pub enum Error {
 
     /// ELF indiciated a bitness which was not a valid variant
     InvalidBitness(u8),
-    
+
     /// ELF indiciated an endianness which was not a valid variant
     InvalidEndianness(u8),
 
@@ -32,13 +32,13 @@ pub enum Error {
 
     /// Seeking to the program headers failed
     SeekProgramHeaders(std::io::Error),
-    
+
     /// Seeking the initialized data for a loaded segment failed
     LoadSeek(std::io::Error),
-    
+
     /// Reading initialized bytes from file failed
     ReadInit(std::io::Error),
-    
+
     /// Creating the FELF failed
     CreateFelf(std::io::Error),
 
@@ -47,13 +47,13 @@ pub enum Error {
 
     /// Truncated integer for filesz
     IntegerTruncationFileSz,
-    
+
     /// Truncated integer for memsz
     IntegerTruncationMemSz,
 
     /// Trucated integer for offset
     IntegerTruncationOffset,
-    
+
     /// Integer overflow when computing current address
     IntegerOverflowCurrentAddress,
 
@@ -167,13 +167,22 @@ impl TryFrom<u8> for Endianness {
 /// Loaded segment
 const PT_LOAD: u32 = 1;
 
+/// Executable segment
+const PF_X: u32 = 1 << 0;
+
+/// Writable segment
+const PF_W: u32 = 1 << 1;
+
+/// Readable segment
+const PF_R: u32 = 1 << 2;
+
 /// Load an ELF from disk
 ///
 /// Returns:
 ///
 /// `(entry virtual address, base address for flat map, flat map contents)`
 pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
-        mut output: impl Write, binary: bool) -> Result<()> {
+        mut output: impl Write, binary: bool, save_perms: bool) -> Result<()> {
     // Open the file
     let mut reader =
         BufReader::new(File::open(path).map_err(Error::Open)?);
@@ -225,7 +234,7 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
         let typ = consume!(reader, u32, en, "PH type")?;
 
         // 64-bit has flags here
-        let mut _flags = if matches!(bt, Bitness::Bits64) {
+        let mut flags = if matches!(bt, Bitness::Bits64) {
             consume!(reader, u32, en, "PH flags")?
         } else { 0 };
 
@@ -235,10 +244,10 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
         let _paddr = consume_native!(reader, bt, en, "PH paddr")?;
         let filesz = consume_native!(reader, bt, en, "PH filesz")?;
         let memsz  = consume_native!(reader, bt, en, "PH memsz")?;
-        
+
         // 32-bit has flags here
         if matches!(bt, Bitness::Bits32) {
-            _flags = consume!(reader, u32, en, "PH flags")?
+            flags = consume!(reader, u32, en, "PH flags")?
         }
 
         let _align = consume_native!(reader, bt, en, "PH align")?;
@@ -271,8 +280,13 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
             bytes.resize(memsz.try_into()
                 .map_err(|_| Error::IntegerTruncationMemSz)?, 0u8);
 
+            // Determine permissions for this segment
+            let r = (flags & PF_R) != 0;
+            let w = (flags & PF_W) != 0;
+            let x = (flags & PF_X) != 0;
+
             // Save the address to load to and the bytes
-            load.push((vaddr, bytes));
+            load.push((vaddr, bytes, r, w, x));
         }
     }
 
@@ -286,7 +300,12 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
 
     if !binary {
         // Write the FELF header
-        output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
+        if !save_perms {
+            output.write_all(b"FELF0001").map_err(Error::WriteFelf)?;
+        } else {
+            output.write_all(b"FELF0002").map_err(Error::WriteFelf)?;
+        }
+
         output
             .write_all(&entry.to_le_bytes())
             .map_err(Error::WriteFelf)?;
@@ -295,9 +314,12 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
             .map_err(Error::WriteFelf)?;
     }
 
+    // Permissions vector
+    let mut perms = Vec::new();
+
     // Write everything!
     let mut cur_addr = lowest_addr;
-    for (vaddr, bytes) in load {
+    for (vaddr, bytes, r, w, x) in load {
         // Get the offset from where we are
         let offset: usize = vaddr.checked_sub(cur_addr)
             .ok_or(Error::SectionOverlap)?
@@ -310,19 +332,39 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
         let mut padding = offset;
         while padding > ZERO_BUF.len() {
             output.write_all(&ZERO_BUF).map_err(Error::WriteFelf)?;
+            if save_perms {
+                perms.write_all(&ZERO_BUF).map_err(Error::WriteFelf)?;
+            }
             padding -= ZERO_BUF.len();
         }
-        output
-            .write_all(&ZERO_BUF[..padding])
+        output.write_all(&ZERO_BUF[..padding])
             .map_err(Error::WriteFelf)?;
+        if save_perms {
+            perms.write_all(&ZERO_BUF[..padding])
+                .map_err(Error::WriteFelf)?;
+        }
 
         // Place in the bytes
         output.write_all(&bytes).map_err(Error::WriteFelf)?;
+
+        if save_perms {
+            // Place in all the permission bytes
+            let perm_flags =
+                if r { PF_R } else { 0 } |
+                if w { PF_W } else { 0 } |
+                if x { PF_X } else { 0 };
+            perms.resize(perms.len() + bytes.len(), perm_flags as u8);
+        }
 
         // Update current address
         cur_addr = vaddr
             .checked_add(bytes.len() as u64)
             .ok_or(Error::IntegerOverflowCurrentAddress)?;
+    }
+
+    if save_perms {
+        // Add permissions to file
+        output.write_all(&perms).map_err(Error::WriteFelf)?;
     }
 
     output.flush().map_err(Error::WriteFelf)?;
@@ -338,6 +380,15 @@ fn main() -> Result<()> {
     // Check if the `--binary` flag was specified
     let mut binary = false;
     args.retain(|x| if x == "--binary" { binary = true; false } else { true });
+
+    // Check if the `--perms` flag was specified
+    let mut perms = false;
+    args.retain(|x| if x == "--perms" { perms = true; false } else { true });
+
+    // Perms flag overrides the binary flag
+    if perms {
+        binary = false;
+    }
 
     // Check if the `--base=` flag was specified
     let mut base = None;
@@ -380,6 +431,8 @@ fn main() -> Result<()> {
 r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
     --binary      - Don't output a FELF, output the raw loaded image with no
                     metadata
+    --perms       - Create a FELF0002 which includes permission data, overrides
+                    --binary
     --base=<addr> - Force the output to start at `<addr>`, zero padding from
                     the base to the start of the first LOAD segment if needed.
                     `<addr>` is default hex, can be overrided with `0d`, `0b`,
@@ -396,7 +449,7 @@ r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
     // Create the output file
     let mut output = BufWriter::new(File::create(&args[2])
         .map_err(Error::CreateFelf)?);
-    write_file(&args[1], base, &mut output, binary)?;
+    write_file(&args[1], base, &mut output, binary, perms)?;
 
     Ok(())
 }

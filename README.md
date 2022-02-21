@@ -29,6 +29,8 @@ To use this tool, simply:
 Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
     --binary      - Don't output a FELF, output the raw loaded image with no
                     metadata
+    --perms       - Create a FELF0002 which includes permission data, overrides
+                    --binary
     --base=<addr> - Force the output to start at `<addr>`, zero padding from
                     the base to the start of the first LOAD segment if needed.
                     `<addr>` is default hex, can be overrided with `0d`, `0b`,
@@ -164,5 +166,23 @@ entry    - 64-bit little endian integer of the entry point address
 base     - 64-bit little endian integer of the base address to load the image
 <image>  - Rest of the file is the raw image, to be loaded at `base` and jumped
            into at `entry`
+```
+
+# FELF0002 format (when --perms flag is used)
+
+This tool by default generates a FELF file format. This is a Falk ELF. This
+is a simple file format with permissions:
+
+```
+FELF0002 - Magic header
+entry    - 64-bit little endian integer of the entry point address
+base     - 64-bit little endian integer of the base address to load the image
+<image>  - Rest of the file is the raw image, to be loaded at `base` and jumped
+           into at `entry`
+<perms>  - Permissions, matching the bytes of <image> where the byte contains
+           the following flags bitwise or-ed together:
+           0x01 - Executable, 0x02 - Writable, 0x04 - Readable
+           Padding bytes will be 0x00, and thus have no permissions for any
+           access
 ```
 
