@@ -428,7 +428,7 @@ fn main() -> Result<()> {
 
     if args.len() != 3 {
         println!(
-r#"Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
+r#"Usage: elfloader [--perms] [--binary] [--base=<addr>] <input ELF> <output>
     --binary      - Don't output a FELF, output the raw loaded image with no
                     metadata
     --perms       - Create a FELF0002 which includes permission data, overrides

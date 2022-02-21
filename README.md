@@ -26,7 +26,7 @@ is based at the address you want it to be at.
 To use this tool, simply:
 
 ```
-Usage: elfloader [--binary] [--base=<addr>] <input ELF> <output>
+Usage: elfloader [--perms] [--binary] [--base=<addr>] <input ELF> <output>
     --binary      - Don't output a FELF, output the raw loaded image with no
                     metadata
     --perms       - Create a FELF0002 which includes permission data, overrides
