@@ -253,6 +253,11 @@ pub fn write_file(path: impl AsRef<Path>, base: Option<u64>,
         let _align = consume_native!(reader, bt, en, "PH align")?;
 
         if typ == PT_LOAD {
+            // If the section is zero size, skip it entirely
+            if memsz == 0 {
+                continue;
+            }
+
             // Read initialized bytes from file if needed
             let mut bytes = Vec::new();
             if filesz > 0 {
